@@ -10,6 +10,8 @@ export type SsoUser = {
   id: string; // Airtable record id
   username: string;
   passwordHash: string;
+  firstName: string;
+  lastName: string;
 };
 
 export async function findUserByUsername(
@@ -29,7 +31,18 @@ export async function findUserByUsername(
     id: record.id,
     username: String(record.get("username")),
     passwordHash: String(record.get("passwordHash")),
+    firstName: String(record.get("firstName") || ""),
+    lastName: String(record.get("lastName") || ""),
   };
+}
+
+export async function updatePasswordHash(
+  recordId: string,
+  newPasswordHash: string
+) {
+  await base(USERS_TABLE).update(recordId, {
+    passwordHash: newPasswordHash,
+  });
 }
 
 export async function createUser(username: string, passwordHash: string) {
