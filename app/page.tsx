@@ -33,6 +33,18 @@ export default async function Home() {
             )}
             <div className="flex flex-col gap-2 pt-2">
               <Link
+                href="/apps"
+                className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+              >
+                Registered apps
+              </Link>
+              <Link
+                href="/sessions"
+                className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+              >
+                Recent sign-ins
+              </Link>
+              <Link
                 href="/change-password"
                 className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
               >

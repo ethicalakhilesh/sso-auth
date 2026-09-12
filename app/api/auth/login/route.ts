@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findUserByUsername } from "@/lib/airtable";
+import { findUserByUsername, recordLogin } from "@/lib/airtable";
 import { signSession, SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "@/lib/auth";
 import { verifyPassword } from "@/lib/password";
 import { isValidUsername } from "@/lib/username";
@@ -40,6 +40,11 @@ export async function POST(req: NextRequest) {
   }
 
   const token = await signSession(user.username);
+
+  // Best-effort: a login history write failing shouldn't block sign-in.
+  recordLogin(user.username, req.headers.get("user-agent") || "unknown").catch(
+    () => {}
+  );
 
   const res = NextResponse.json({ ok: true });
   res.cookies.set(SESSION_COOKIE, token, {

@@ -28,6 +28,10 @@ Owns login only — no app data.
      `codeChallengeMethod`, `expiresAt` (all single line text)
    - `used` (single line text, `"true"`/`"false"`)
 
+   **`Sessions`** — login history, shown on the `/sessions` dashboard page.
+   Written automatically on every successful login; nothing to manage here.
+   - `username`, `loginAt` (ISO timestamp), `userAgent` (all single line text)
+
 2. Generate your signing keypair:
    ```bash
    node scripts/generate-keys.mjs
@@ -51,12 +55,22 @@ Owns login only — no app data.
 - `GET /.well-known/openid-configuration` — discovery document
 - `GET /.well-known/jwks.json` — public signing key
 - `GET /authorize` — authorization endpoint (Authorization Code + PKCE only;
-  `code_challenge_method=S256` is required, `plain` is rejected)
+  `code_challenge_method=S256` is required, `plain` is rejected; supports
+  `prompt=none` for silent renewal)
 - `POST /api/oidc/token` — token endpoint; exchanges a code for an ID token
+
+## Dashboard pages (this app's own UI, not part of the OIDC flow)
+
+- `/` — home, shows who's logged in
+- `/apps` — register new client apps and edit existing ones (`clientId` is
+  fixed after creation; `redirectUris` and display name can be edited)
+- `/sessions` — last 7 logins to sso-auth itself
+- `/change-password` — change your sso-auth login password
 
 ## How a client app (e.g. Flow) connects
 
-1. Register the app as a row in the `Clients` table first — `/authorize`
+1. Register the app first, either via the `/apps` dashboard page or
+   directly as a row in the `Clients` table — `/authorize`
    rejects any `client_id` or `redirect_uri` it doesn't recognize.
 2. Client generates a PKCE `code_verifier`/`code_challenge` pair and
    redirects the browser to:

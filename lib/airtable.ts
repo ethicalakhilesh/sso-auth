@@ -93,6 +93,53 @@ export async function findClientById(
   };
 }
 
+export async function listClients(): Promise<OidcClient[]> {
+  const records = await base(CLIENTS_TABLE).select().all();
+
+  return records.map((record) => {
+    const redirectUrisRaw = String(record.get("redirectUris") || "");
+    const clientId = String(record.get("clientId"));
+    return {
+      id: record.id,
+      clientId,
+      redirectUris: redirectUrisRaw
+        .split(",")
+        .map((uri) => uri.trim())
+        .filter(Boolean),
+      name: String(record.get("name") || clientId),
+    };
+  });
+}
+
+export async function createClient(params: {
+  clientId: string;
+  redirectUris: string[];
+  name: string;
+}) {
+  const created = await base(CLIENTS_TABLE).create([
+    {
+      fields: {
+        clientId: params.clientId,
+        redirectUris: params.redirectUris.join(","),
+        name: params.name,
+      },
+    },
+  ]);
+  return created[0].id;
+}
+
+export async function updateClient(
+  recordId: string,
+  params: { redirectUris: string[]; name: string }
+) {
+  // clientId is intentionally not editable here — apps hardcode it, so
+  // changing it would silently break whatever's already configured to use it.
+  await base(CLIENTS_TABLE).update(recordId, {
+    redirectUris: params.redirectUris.join(","),
+    name: params.name,
+  });
+}
+
 const AUTH_CODES_TABLE = "AuthCodes";
 
 export type NewAuthCode = {
@@ -160,4 +207,49 @@ export async function consumeAuthCode(
     codeChallenge: String(record.get("codeChallenge")),
     codeChallengeMethod: String(record.get("codeChallengeMethod")),
   };
+}
+
+const SESSIONS_TABLE = "Sessions";
+
+export type SessionRecord = {
+  username: string;
+  loginAt: string; // ISO timestamp
+  userAgent: string;
+};
+
+/**
+ * Fire-and-forget from the caller's perspective: a login attempt that
+ * fails to record its history entry shouldn't fail the login itself, so
+ * callers should catch/ignore errors from this rather than let a logging
+ * hiccup block someone from signing in.
+ */
+export async function recordLogin(username: string, userAgent: string) {
+  await base(SESSIONS_TABLE).create([
+    {
+      fields: {
+        username,
+        loginAt: new Date().toISOString(),
+        userAgent: userAgent.slice(0, 500), // Airtable text fields have limits
+      },
+    },
+  ]);
+}
+
+export async function listRecentSessions(
+  username: string,
+  limit: number
+): Promise<SessionRecord[]> {
+  const records = await base(SESSIONS_TABLE)
+    .select({
+      filterByFormula: `LOWER({username}) = "${username.toLowerCase()}"`,
+      sort: [{ field: "loginAt", direction: "desc" }],
+      maxRecords: limit,
+    })
+    .firstPage();
+
+  return records.map((record) => ({
+    username: String(record.get("username")),
+    loginAt: String(record.get("loginAt")),
+    userAgent: String(record.get("userAgent") || ""),
+  }));
 }
