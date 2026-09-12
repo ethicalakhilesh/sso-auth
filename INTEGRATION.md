@@ -132,6 +132,32 @@ lifetime) so Flow doesn't need to re-verify against sso-auth on every request.
 setFlowSessionCookie({ username: payload.preferred_username });
 ```
 
+## 7. Silent renewal when Flow's own session expires
+
+Flow's own session (set in step 6) has its own lifetime, independent of the
+1-hour ID token. When it expires, don't force a full visible login —
+redirect through `/authorize` again with `prompt=none` added:
+
+```ts
+authorizeUrl.searchParams.set("prompt", "none");
+```
+
+- If you're still logged into sso-auth (its own session lasts 7 days),
+  this redirects straight back to Flow's callback with a fresh `code` —
+  completely silent, no login screen, nothing you'd notice
+- If sso-auth's session has *also* expired, it redirects back with
+  `?error=login_required&state=...` instead — Flow should detect this and
+  fall back to a normal (visible) `/authorize` redirect, without `prompt=none`
+
+```ts
+// in the callback handler
+const error = req.nextUrl.searchParams.get("error");
+if (error === "login_required") {
+  // Silent renewal failed — retry visibly, without prompt=none this time.
+  return redirect(buildAuthorizeUrl({ silent: false }));
+}
+```
+
 ## Checklist before going live
 
 - [ ] `redirect_uri` in code exactly matches the `Clients` table row

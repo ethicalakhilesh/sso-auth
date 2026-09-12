@@ -9,7 +9,11 @@ export async function middleware(req: NextRequest) {
     req.nextUrl.pathname.startsWith("/login") ||
     req.nextUrl.pathname.startsWith("/api/auth/login") ||
     req.nextUrl.pathname.startsWith("/.well-known/") ||
-    req.nextUrl.pathname.startsWith("/api/oidc/");
+    req.nextUrl.pathname.startsWith("/api/oidc/") ||
+    // /authorize handles its own auth logic now (normal login-redirect vs
+    // prompt=none silent-renewal error-back), rather than middleware's
+    // one-size-fits-all redirect-to-/login.
+    req.nextUrl.pathname.startsWith("/authorize");
 
   if (!session && !isPublicPath) {
     const loginUrl = new URL("/login", req.url);

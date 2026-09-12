@@ -22,5 +22,6 @@ export async function GET() {
     scopes_supported: ["openid", "profile"],
     claims_supported: ["sub", "preferred_username", "iss", "aud", "exp", "iat"],
     code_challenge_methods_supported: ["S256"],
+    prompt_values_supported: ["none"],
   });
 }

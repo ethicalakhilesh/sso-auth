@@ -9,11 +9,15 @@ const CODE_TTL_SECONDS = 60;
 /**
  * OIDC authorization endpoint (Authorization Code + PKCE).
  *
- * By the time this handler runs, middleware.ts has already redirected any
- * unauthenticated request to /login?redirect=/authorize?<these same params>,
- * so a missing session here would only happen if someone hits this route
- * directly with a stale/tampered cookie — treated as login_required rather
- * than silently failing.
+ * This route now owns its own auth decision (middleware.ts treats
+ * /authorize as public and lets every request reach here), because the
+ * right behavior on "not logged in" differs by request:
+ *
+ * - Normal request: redirect to /login, show the form, resume afterward.
+ * - prompt=none (silent renewal, e.g. Flow's own session expired and it's
+ *   checking whether you're still logged into sso-auth): never show a
+ *   login form — error straight back to the client's redirect_uri so it
+ *   can fall back to a normal, visible login instead of hanging.
  */
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
@@ -24,6 +28,7 @@ export async function GET(req: NextRequest) {
   const state = params.get("state");
   const codeChallenge = params.get("code_challenge");
   const codeChallengeMethod = params.get("code_challenge_method");
+  const prompt = params.get("prompt"); // e.g. "none" for silent renewal
 
   if (
     !clientId ||
@@ -61,7 +66,22 @@ export async function GET(req: NextRequest) {
   const session = token ? await verifySession(token) : null;
 
   if (!session) {
-    return NextResponse.json({ error: "login_required" }, { status: 401 });
+    if (prompt === "none") {
+      // Silent renewal failed — sso-auth's own session is also gone.
+      // Error back to the client instead of showing a login form; the
+      // client decides whether to retry visibly.
+      const callback = new URL(redirectUri);
+      callback.searchParams.set("error", "login_required");
+      if (state) callback.searchParams.set("state", state);
+      return NextResponse.redirect(callback.toString());
+    }
+
+    const loginUrl = new URL("/login", req.url);
+    loginUrl.searchParams.set(
+      "redirect",
+      req.nextUrl.pathname + req.nextUrl.search
+    );
+    return NextResponse.redirect(loginUrl);
   }
 
   const code = crypto.randomBytes(32).toString("base64url");
