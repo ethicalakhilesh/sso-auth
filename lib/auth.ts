@@ -56,7 +56,8 @@ async function getPublicKey(): Promise<KeyLike> {
 }
 
 function issuer(): string {
-  return process.env.AUTH_ISSUER || "http://localhost:3000";
+  const rawIssuer = process.env.AUTH_ISSUER || "http://localhost:3000";
+  return rawIssuer.replace(/\/+$/, "");
 }
 
 export type TokenClaims = {
@@ -146,6 +147,7 @@ export async function signIdToken(
 export async function getPublicJwk() {
   const publicKey = await getPublicKey();
   const jwk = await exportJWK(publicKey);
+
   return {
     ...jwk,
     kid: KID,
