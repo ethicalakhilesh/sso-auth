@@ -55,15 +55,6 @@ async function getPublicKey(): Promise<KeyLike> {
   return cachedPublicKey;
 }
 
-/**
- * Returns the canonical OIDC issuer.
- *
- * Trailing slashes are removed so these all resolve to the same issuer:
- *
- * https://sso.example.com
- * https://sso.example.com/
- * https://sso.example.com////
- */
 function issuer(): string {
   const rawIssuer =
     process.env.AUTH_ISSUER || "http://localhost:3000";
@@ -153,4 +144,16 @@ export async function signIdToken(
 /**
  * Publishes the public key as a JWK for the /jwks.json endpoint, so any
  * client can verify tokens without holding a shared secret. Only ever
- * exports the public key — never
+ * exports the public key — never the private one.
+ */
+export async function getPublicJwk() {
+  const publicKey = await getPublicKey();
+  const jwk = await exportJWK(publicKey);
+
+  return {
+    ...jwk,
+    kid: KID,
+    use: "sig",
+    alg: ALG,
+  };
+}
