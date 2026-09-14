@@ -45,6 +45,9 @@ export default async function SessionsPage() {
                 <p className="text-sm text-[#F5F5F7]">
                   {formatDate(entry.loginAt)}
                 </p>
+                <p className="text-xs text-[#A1A1AA] mt-1">
+                  {entry.device || "Unknown device"}
+                </p>
                 <p className="text-xs text-[#71717A] mt-1 truncate">
                   {entry.userAgent}
                 </p>

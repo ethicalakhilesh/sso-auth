@@ -3,6 +3,7 @@ import { findUserByUsername, recordLogin } from "@/lib/airtable";
 import { signSession, SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "@/lib/auth";
 import { verifyPassword } from "@/lib/password";
 import { isValidUsername } from "@/lib/username";
+import { getDeviceName } from "@/lib/device";
 
 export async function POST(req: NextRequest) {
   const { username, password } = await req.json();
@@ -42,7 +43,11 @@ export async function POST(req: NextRequest) {
   const token = await signSession(user.username);
 
   // Best-effort: a login history write failing shouldn't block sign-in.
-  recordLogin(user.username, req.headers.get("user-agent") || "unknown").catch(
+  recordLogin(
+    user.username,
+    req.headers.get("user-agent") || "unknown",
+    getDeviceName(req.headers.get("user-agent") || "")
+  ).catch(
     () => {}
   );
 

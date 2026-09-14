@@ -222,6 +222,7 @@ export type SessionRecord = {
   username: string;
   loginAt: string; // ISO timestamp
   userAgent: string;
+  device: string;
 };
 
 /**
@@ -230,13 +231,18 @@ export type SessionRecord = {
  * callers should catch/ignore errors from this rather than let a logging
  * hiccup block someone from signing in.
  */
-export async function recordLogin(username: string, userAgent: string) {
+export async function recordLogin(
+  username: string,
+  userAgent: string,
+  device: string
+) {
   await base(SESSIONS_TABLE).create([
     {
       fields: {
         username,
         loginAt: new Date().toISOString(),
         userAgent: userAgent.slice(0, 500), // Airtable text fields have limits
+        device: device.slice(0, 100),
       },
     },
   ]);
@@ -258,5 +264,6 @@ export async function listRecentSessions(
     username: String(record.get("username")),
     loginAt: String(record.get("loginAt")),
     userAgent: String(record.get("userAgent") || ""),
+    device: String(record.get("device") || ""),
   }));
 }
