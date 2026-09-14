@@ -5,25 +5,30 @@ export async function middleware(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySession(token) : null;
 
+  const isAuthorize = req.nextUrl.pathname.startsWith("/authorize");
+  const isSilentAuthorize =
+    isAuthorize && req.nextUrl.searchParams.get("prompt") === "none";
+
   const isPublicPath =
     req.nextUrl.pathname.startsWith("/login") ||
     req.nextUrl.pathname.startsWith("/api/auth/login") ||
     req.nextUrl.pathname.startsWith("/.well-known/") ||
     req.nextUrl.pathname.startsWith("/api/oidc/") ||
-    // /authorize handles its own auth logic now (normal login-redirect vs
-    // prompt=none silent-renewal error-back), rather than middleware's
-    // one-size-fits-all redirect-to-/login.
-    req.nextUrl.pathname.startsWith("/authorize");
+    // Only silent OIDC authorization bypasses the normal login redirect.
+    // Normal /authorize requests must continue through /login so the
+    // existing session/login flow can resume correctly.
+    (isAuthorize && isSilentAuthorize);
 
   if (!session && !isPublicPath) {
     const loginUrl = new URL("/login", req.url);
-    // Preserve the full path *and* query string (e.g. /authorize's
-    // client_id, redirect_uri, code_challenge, etc.) — not just the
-    // pathname — so the OIDC flow can resume after login.
+
+    // Preserve the complete authorization request, including:
+    // client_id, redirect_uri, code_challenge, state, etc.
     loginUrl.searchParams.set(
       "redirect",
       req.nextUrl.pathname + req.nextUrl.search
     );
+
     return NextResponse.redirect(loginUrl);
   }
 
