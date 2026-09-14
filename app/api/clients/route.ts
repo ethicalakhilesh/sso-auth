@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listClients, createClient, findClientById } from "@/lib/airtable";
+import {
+  findUserByUsername,
+  listClients,
+  createClient,
+  findClientById,
+} from "@/lib/airtable";
+import {
+  SESSION_COOKIE,
+  verifySession,
+} from "@/lib/auth";
 import { isValidClientId, parseRedirectUris } from "@/lib/client-validation";
 
 /**
@@ -12,7 +21,38 @@ export async function GET() {
   return NextResponse.json({ clients });
 }
 
+async function requireAdmin(req: NextRequest) {
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
+
+  if (!token) {
+    return null;
+  }
+
+  const session = await verifySession(token);
+
+  if (!session) {
+    return null;
+  }
+
+  const user = await findUserByUsername(session.preferred_username);
+
+  if (!user || user.role !== "admin") {
+    return null;
+  }
+
+  return user;
+}
+
 export async function POST(req: NextRequest) {
+  const admin = await requireAdmin(req);
+
+  if (!admin) {
+    return NextResponse.json(
+      { error: "Admin permission required" },
+      { status: 403 }
+    );
+  }
+
   const body = await req.json();
   const clientId = String(body.clientId || "").trim().toLowerCase();
   const name = String(body.name || "").trim();
@@ -29,14 +69,19 @@ export async function POST(req: NextRequest) {
   }
 
   const redirectUris = parseRedirectUris(redirectUrisRaw);
+
   if (!redirectUris) {
     return NextResponse.json(
-      { error: "redirectUris must be one or more valid, absolute URLs (comma-separated)" },
+      {
+        error:
+          "redirectUris must be one or more valid, absolute URLs (comma-separated)",
+      },
       { status: 400 }
     );
   }
 
   const existing = await findClientById(clientId);
+
   if (existing) {
     return NextResponse.json(
       { error: `A client with clientId "${clientId}" already exists` },

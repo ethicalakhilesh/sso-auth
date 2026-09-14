@@ -12,8 +12,10 @@ type OidcClient = {
 
 export function AppsManager({
   initialClients,
+  isAdmin,
 }: {
   initialClients: OidcClient[];
+  isAdmin: boolean;
 }) {
   const [clients, setClients] = useState(initialClients);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -46,7 +48,7 @@ export function AppsManager({
           )}
 
           {clients.map((client) =>
-            editingId === client.id ? (
+            editingId === client.id && isAdmin ? (
               <EditClientForm
                 key={client.id}
                 client={client}
@@ -60,28 +62,30 @@ export function AppsManager({
               <ClientRow
                 key={client.id}
                 client={client}
+                isAdmin={isAdmin}
                 onEdit={() => setEditingId(client.id)}
               />
             )
           )}
         </div>
 
-        {showAddForm ? (
-          <AddClientForm
-            onSaved={() => {
-              setShowAddForm(false);
-              refresh();
-            }}
-            onCancel={() => setShowAddForm(false)}
-          />
-        ) : (
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-[#A1A1AA] hover:text-[#F5F5F7] hover:border-white/20 transition-colors"
-          >
-            + Register new app
-          </button>
-        )}
+        {isAdmin &&
+          (showAddForm ? (
+            <AddClientForm
+              onSaved={() => {
+                setShowAddForm(false);
+                refresh();
+              }}
+              onCancel={() => setShowAddForm(false)}
+            />
+          ) : (
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-[#A1A1AA] hover:text-[#F5F5F7] hover:border-white/20 transition-colors"
+            >
+              + Register new app
+            </button>
+          ))}
       </div>
     </main>
   );
@@ -89,23 +93,32 @@ export function AppsManager({
 
 function ClientRow({
   client,
+  isAdmin,
   onEdit,
 }: {
   client: OidcClient;
+  isAdmin: boolean;
   onEdit: () => void;
 }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-[#F5F5F7]">{client.name}</p>
-        <button
-          onClick={onEdit}
-          className="text-xs text-[#A1A1AA] hover:text-[#F5F5F7] transition-colors"
-        >
-          Edit
-        </button>
+
+        {isAdmin && (
+          <button
+            onClick={onEdit}
+            className="text-xs text-[#A1A1AA] hover:text-[#F5F5F7] transition-colors"
+          >
+            Edit
+          </button>
+        )}
       </div>
-      <p className="text-xs text-[#71717A]">clientId: {client.clientId}</p>
+
+      <p className="text-xs text-[#71717A]">
+        clientId: {client.clientId}
+      </p>
+
       <ul className="text-xs text-[#71717A] space-y-0.5">
         {client.redirectUris.map((uri) => (
           <li key={uri} className="truncate">
@@ -199,6 +212,7 @@ function AddClientForm({
         >
           {loading ? "Adding..." : "Add app"}
         </button>
+
         <button
           type="button"
           onClick={onCancel}
@@ -287,6 +301,7 @@ function EditClientForm({
         >
           {loading ? "Saving..." : "Save"}
         </button>
+
         <button
           type="button"
           onClick={onCancel}
@@ -309,6 +324,7 @@ function FormField({
   return (
     <label className="block space-y-1">
       <span className="text-xs text-[#A1A1AA]">{label}</span>
+
       <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
         {children}
       </div>

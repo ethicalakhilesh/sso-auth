@@ -6,12 +6,15 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
 
 const USERS_TABLE = "Users";
 
+export type UserRole = "admin" | "user";
+
 export type SsoUser = {
   id: string; // Airtable record id
   username: string;
   passwordHash: string;
   firstName: string;
   lastName: string;
+  role: UserRole;
 };
 
 export async function findUserByUsername(
@@ -27,12 +30,15 @@ export async function findUserByUsername(
   const record = records[0];
   if (!record) return null;
 
+  const role = String(record.get("role") || "user").toLowerCase();
+
   return {
     id: record.id,
     username: String(record.get("username")),
     passwordHash: String(record.get("passwordHash")),
     firstName: String(record.get("firstName") || ""),
     lastName: String(record.get("lastName") || ""),
+    role: role === "admin" ? "admin" : "user",
   };
 }
 
@@ -51,6 +57,7 @@ export async function createUser(username: string, passwordHash: string) {
       fields: {
         username: username.toLowerCase(),
         passwordHash,
+        role: "user",
         createdAt: new Date().toISOString(),
       },
     },

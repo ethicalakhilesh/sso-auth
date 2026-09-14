@@ -1,4 +1,6 @@
-import { listClients } from "@/lib/airtable";
+import { cookies } from "next/headers";
+import { findUserByUsername, listClients } from "@/lib/airtable";
+import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { AppsManager } from "./apps-manager";
 
 // Without this, Next.js has no signal that this page depends on live data
@@ -10,5 +12,21 @@ export const dynamic = "force-dynamic";
 
 export default async function AppsPage() {
   const clients = await listClients();
-  return <AppsManager initialClients={clients} />;
+
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+
+  const session = token ? await verifySession(token) : null;
+  const user = session
+    ? await findUserByUsername(session.preferred_username)
+    : null;
+
+  const isAdmin = user?.role === "admin";
+
+  return (
+    <AppsManager
+      initialClients={clients}
+      isAdmin={isAdmin}
+    />
+  );
 }
