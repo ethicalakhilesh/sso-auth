@@ -34,10 +34,18 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const clientId = String(body.clientId || "").trim().toLowerCase();
+
+  const clientId = String(body.clientId || "")
+    .trim()
+    .toLowerCase();
+
   const name = String(body.name || "").trim();
+
   const redirectUrisRaw = String(body.redirectUris || "");
+
   const launchUrl = String(body.launchUrl || "").trim();
+
+  const appSvgCode = String(body.appSvgCode || "").trim();
 
   if (!isValidClientId(clientId)) {
     return NextResponse.json(
@@ -50,6 +58,7 @@ export async function POST(req: NextRequest) {
   }
 
   const redirectUris = parseRedirectUris(redirectUrisRaw);
+
   if (!redirectUris) {
     return NextResponse.json(
       {
@@ -70,10 +79,28 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Optional field. If supplied, it must at least be SVG markup.
+  if (
+    appSvgCode &&
+    (!/^<svg[\s>]/i.test(appSvgCode) ||
+      !/<\/svg>\s*$/i.test(appSvgCode))
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "appSvgCode must contain valid SVG markup starting with <svg and ending with </svg>",
+      },
+      { status: 400 }
+    );
+  }
+
   const existing = await findClientById(clientId);
+
   if (existing) {
     return NextResponse.json(
-      { error: `A client with clientId "${clientId}" already exists` },
+      {
+        error: `A client with clientId "${clientId}" already exists`,
+      },
       { status: 409 }
     );
   }
@@ -83,6 +110,7 @@ export async function POST(req: NextRequest) {
     redirectUris,
     name: name || clientId,
     launchUrl,
+    appSvgCode,
   });
 
   recordAuditEvent({
@@ -91,5 +119,8 @@ export async function POST(req: NextRequest) {
     clientId,
   });
 
-  return NextResponse.json({ id, clientId }, { status: 201 });
+  return NextResponse.json(
+    { id, clientId },
+    { status: 201 }
+  );
 }
