@@ -1,46 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  findUserByUsername,
   listClients,
   createClient,
   findClientById,
+  recordAuditEvent,
 } from "@/lib/airtable";
+import { requireAdmin } from "@/lib/require-admin";
 import {
-  SESSION_COOKIE,
-  verifySession,
-} from "@/lib/auth";
-import { isValidClientId, parseRedirectUris } from "@/lib/client-validation";
+  isValidClientId,
+  isValidLaunchUrl,
+  parseRedirectUris,
+} from "@/lib/client-validation";
 
 /**
  * Protected implicitly by middleware.ts (any non-public path requires
  * sso-auth's own session cookie) — this is dashboard-only, not something
- * client apps call.
+ * client apps call. Listing clients doesn't need admin (the App Dashboard
+ * needs to read this for admins to see "all apps"), but mutating them does.
  */
 export async function GET() {
   const clients = await listClients();
   return NextResponse.json({ clients });
-}
-
-async function requireAdmin(req: NextRequest) {
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
-
-  if (!token) {
-    return null;
-  }
-
-  const session = await verifySession(token);
-
-  if (!session) {
-    return null;
-  }
-
-  const user = await findUserByUsername(session.preferred_username);
-
-  if (!user || user.role !== "admin") {
-    return null;
-  }
-
-  return user;
 }
 
 export async function POST(req: NextRequest) {
@@ -57,6 +37,7 @@ export async function POST(req: NextRequest) {
   const clientId = String(body.clientId || "").trim().toLowerCase();
   const name = String(body.name || "").trim();
   const redirectUrisRaw = String(body.redirectUris || "");
+  const launchUrl = String(body.launchUrl || "").trim();
 
   if (!isValidClientId(clientId)) {
     return NextResponse.json(
@@ -69,7 +50,6 @@ export async function POST(req: NextRequest) {
   }
 
   const redirectUris = parseRedirectUris(redirectUrisRaw);
-
   if (!redirectUris) {
     return NextResponse.json(
       {
@@ -80,8 +60,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const existing = await findClientById(clientId);
+  if (!isValidLaunchUrl(launchUrl)) {
+    return NextResponse.json(
+      {
+        error:
+          "launchUrl must be an absolute https:// URL (http:// only for localhost/127.0.0.1)",
+      },
+      { status: 400 }
+    );
+  }
 
+  const existing = await findClientById(clientId);
   if (existing) {
     return NextResponse.json(
       { error: `A client with clientId "${clientId}" already exists` },
@@ -93,6 +82,13 @@ export async function POST(req: NextRequest) {
     clientId,
     redirectUris,
     name: name || clientId,
+    launchUrl,
+  });
+
+  recordAuditEvent({
+    type: "client_created",
+    actorUserId: admin.id,
+    clientId,
   });
 
   return NextResponse.json({ id, clientId }, { status: 201 });

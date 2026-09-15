@@ -32,3 +32,31 @@ export function parseRedirectUris(raw: string): string[] | null {
 
   return entries;
 }
+
+/**
+ * launchUrl is security-sensitive (Finding 6): the dashboard navigates the
+ * logged-in user's browser straight to this URL, so an attacker-controlled
+ * value here would turn the dashboard into an open-redirect/phishing
+ * vector. Only https: is allowed, except localhost/127.0.0.1 over http:
+ * for local development — dangerous schemes like javascript:/data:/vbscript:
+ * are rejected simply by not being in that allow-list.
+ */
+export function isValidLaunchUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+
+  if (url.protocol === "https:") return true;
+
+  if (
+    url.protocol === "http:" &&
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+  ) {
+    return true;
+  }
+
+  return false;
+}

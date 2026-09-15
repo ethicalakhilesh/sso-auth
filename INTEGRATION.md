@@ -158,6 +158,25 @@ if (error === "login_required") {
 }
 ```
 
+## 8. Handling `access_denied`
+
+Separate from `login_required` — this means the user *is* logged into
+sso-auth, but isn't assigned access to this specific app (see sso-auth's
+own README, "Access control"). Retrying `/authorize` won't help; the user
+needs an admin to assign them first.
+
+```ts
+if (error === "access_denied") {
+  // Don't retry — show the user a clear message instead, e.g.
+  // "You don't have access to this app yet. Contact an admin."
+}
+```
+
+This can happen even for a previously-working login: if an admin revokes
+access, the *next* authorization attempt (not the current session) is
+denied — Flow's own session isn't automatically invalidated, so build for
+the case where a user is mid-session in Flow when their access is pulled.
+
 ## Checklist before going live
 
 - [ ] `redirect_uri` in code exactly matches the `Clients` table row

@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import crypto from "crypto";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth";
-import { findClientById, createAuthCode } from "@/lib/airtable";
+import {
+  findClientById,
+  findUserByUsername,
+  createAuthCode,
+  recordAuditEvent,
+} from "@/lib/airtable";
+import { canAccessClient } from "@/lib/access-control";
 
 const CODE_TTL_SECONDS = 60;
 
@@ -82,6 +88,28 @@ export async function GET(req: NextRequest) {
       req.nextUrl.pathname + req.nextUrl.search
     );
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Resolve the backing user record — session only carries a username,
+  // but role and assignment checks need the stable Airtable record id
+  // (Finding 15: username-based session is fine, just resolve once here).
+  const user = await findUserByUsername(session.preferred_username);
+
+  // Missing backing user for a valid session shouldn't normally happen,
+  // but fail closed rather than let a broken lookup slip through as access.
+  const allowed = user ? await canAccessClient(user, clientId) : false;
+
+  if (!allowed) {
+    recordAuditEvent({
+      type: "authorization_denied",
+      actorUserId: user?.id || "unknown",
+      clientId,
+    });
+
+    const callback = new URL(redirectUri);
+    callback.searchParams.set("error", "access_denied");
+    if (state) callback.searchParams.set("state", state);
+    return NextResponse.redirect(callback.toString());
   }
 
   const code = crypto.randomBytes(32).toString("base64url");

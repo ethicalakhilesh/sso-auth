@@ -8,23 +8,66 @@ type OidcClient = {
   clientId: string;
   redirectUris: string[];
   name: string;
+  launchUrl: string;
 };
+
+type UserOption = { id: string; username: string; displayName: string };
 
 export function AppsManager({
   initialClients,
   isAdmin,
+  users,
+  initialAssignmentsByClient,
 }: {
   initialClients: OidcClient[];
   isAdmin: boolean;
+  users: UserOption[];
+  initialAssignmentsByClient: Record<string, string[]>;
 }) {
   const [clients, setClients] = useState(initialClients);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [assignmentsByClient, setAssignmentsByClient] = useState(
+    initialAssignmentsByClient
+  );
+  const [managingAccessId, setManagingAccessId] = useState<string | null>(
+    null
+  );
 
   async function refresh() {
     const res = await fetch("/api/clients");
     const data = await res.json();
     setClients(data.clients);
+  }
+
+  async function toggleAssignment(
+    clientId: string,
+    userId: string,
+    shouldBeAssigned: boolean
+  ) {
+    // Optimistic update — this is an admin-only, low-stakes toggle; a
+    // failed request just gets corrected on next refresh rather than
+    // blocking the UI on a round trip.
+    setAssignmentsByClient((prev) => {
+      const current = prev[clientId] || [];
+      const next = shouldBeAssigned
+        ? [...current, userId]
+        : current.filter((id) => id !== userId);
+      return { ...prev, [clientId]: next };
+    });
+
+    if (shouldBeAssigned) {
+      await fetch("/api/assignments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, clientId }),
+      });
+    } else {
+      await fetch(
+        `/api/assignments?userId=${encodeURIComponent(userId)}&clientId=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }
+      );
+    }
   }
 
   return (
@@ -64,6 +107,17 @@ export function AppsManager({
                 client={client}
                 isAdmin={isAdmin}
                 onEdit={() => setEditingId(client.id)}
+                users={users}
+                assignedUserIds={assignmentsByClient[client.clientId] || []}
+                managingAccess={managingAccessId === client.id}
+                onToggleManageAccess={() =>
+                  setManagingAccessId(
+                    managingAccessId === client.id ? null : client.id
+                  )
+                }
+                onToggleAssignment={(userId, assigned) =>
+                  toggleAssignment(client.clientId, userId, assigned)
+                }
               />
             )
           )}
@@ -95,29 +149,47 @@ function ClientRow({
   client,
   isAdmin,
   onEdit,
+  users,
+  assignedUserIds,
+  managingAccess,
+  onToggleManageAccess,
+  onToggleAssignment,
 }: {
   client: OidcClient;
   isAdmin: boolean;
   onEdit: () => void;
+  users: UserOption[];
+  assignedUserIds: string[];
+  managingAccess: boolean;
+  onToggleManageAccess: () => void;
+  onToggleAssignment: (userId: string, assigned: boolean) => void;
 }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 space-y-2">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-[#F5F5F7]">{client.name}</p>
+        <p className="text-sm font-medium text-[#F5F5F7] truncate">
+          {client.name}
+        </p>
 
         {isAdmin && (
-          <button
-            onClick={onEdit}
-            className="text-xs text-[#A1A1AA] hover:text-[#F5F5F7] transition-colors"
-          >
-            Edit
-          </button>
+          <div className="flex gap-3 shrink-0">
+            <button
+              onClick={onToggleManageAccess}
+              className="text-xs text-[#A1A1AA] hover:text-[#F5F5F7] transition-colors"
+            >
+              Access
+            </button>
+            <button
+              onClick={onEdit}
+              className="text-xs text-[#A1A1AA] hover:text-[#F5F5F7] transition-colors"
+            >
+              Edit
+            </button>
+          </div>
         )}
       </div>
 
-      <p className="text-xs text-[#71717A]">
-        clientId: {client.clientId}
-      </p>
+      <p className="text-xs text-[#71717A]">clientId: {client.clientId}</p>
 
       <ul className="text-xs text-[#71717A] space-y-0.5">
         {client.redirectUris.map((uri) => (
@@ -126,6 +198,32 @@ function ClientRow({
           </li>
         ))}
       </ul>
+
+      {isAdmin && managingAccess && (
+        <div className="pt-2 mt-2 border-t border-white/10 space-y-1.5">
+          <p className="text-xs text-[#A1A1AA] mb-1">Assigned users</p>
+          {users.length === 0 && (
+            <p className="text-xs text-[#71717A]">No users yet.</p>
+          )}
+          {users.map((u) => {
+            const checked = assignedUserIds.includes(u.id);
+            return (
+              <label
+                key={u.id}
+                className="flex items-center gap-2 text-xs text-[#F5F5F7] cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => onToggleAssignment(u.id, e.target.checked)}
+                  className="accent-[#B368F7]"
+                />
+                {u.displayName}
+              </label>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -140,6 +238,7 @@ function AddClientForm({
   const [clientId, setClientId] = useState("");
   const [name, setName] = useState("");
   const [redirectUris, setRedirectUris] = useState("");
+  const [launchUrl, setLaunchUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -151,7 +250,7 @@ function AddClientForm({
     const res = await fetch("/api/clients", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId, name, redirectUris }),
+      body: JSON.stringify({ clientId, name, redirectUris, launchUrl }),
     });
 
     setLoading(false);
@@ -174,6 +273,8 @@ function AddClientForm({
         <input
           type="text"
           required
+          name="clientId"
+          spellCheck={false}
           placeholder="e.g. flow"
           value={clientId}
           onChange={(e) => setClientId(e.target.value.toLowerCase())}
@@ -184,6 +285,7 @@ function AddClientForm({
       <FormField label="Display name">
         <input
           type="text"
+          name="name"
           placeholder="e.g. Flow"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -195,9 +297,22 @@ function AddClientForm({
         <input
           type="text"
           required
+          name="redirectUris"
           placeholder="https://flow.yourdomain.com/api/auth/callback"
           value={redirectUris}
           onChange={(e) => setRedirectUris(e.target.value)}
+          className="w-full bg-transparent text-sm text-[#F5F5F7] placeholder:text-[#71717A] outline-none"
+        />
+      </FormField>
+
+      <FormField label="Launch URL (app's own login-start page)">
+        <input
+          type="text"
+          required
+          name="launchUrl"
+          placeholder="https://flow.yourdomain.com/api/auth/login"
+          value={launchUrl}
+          onChange={(e) => setLaunchUrl(e.target.value)}
           className="w-full bg-transparent text-sm text-[#F5F5F7] placeholder:text-[#71717A] outline-none"
         />
       </FormField>
@@ -210,7 +325,7 @@ function AddClientForm({
           disabled={loading}
           className="flex-1 rounded-full bg-gradient-to-r from-[#6C63FF] via-[#B368F7] to-[#FF6B81] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          {loading ? "Adding..." : "Add app"}
+          {loading ? "Adding…" : "Add app"}
         </button>
 
         <button
@@ -238,6 +353,7 @@ function EditClientForm({
   const [redirectUris, setRedirectUris] = useState(
     client.redirectUris.join(",")
   );
+  const [launchUrl, setLaunchUrl] = useState(client.launchUrl);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -249,7 +365,7 @@ function EditClientForm({
     const res = await fetch(`/api/clients/${client.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, redirectUris }),
+      body: JSON.stringify({ name, redirectUris, launchUrl }),
     });
 
     setLoading(false);
@@ -275,6 +391,7 @@ function EditClientForm({
       <FormField label="Display name">
         <input
           type="text"
+          name="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="w-full bg-transparent text-sm text-[#F5F5F7] outline-none"
@@ -285,8 +402,20 @@ function EditClientForm({
         <input
           type="text"
           required
+          name="redirectUris"
           value={redirectUris}
           onChange={(e) => setRedirectUris(e.target.value)}
+          className="w-full bg-transparent text-sm text-[#F5F5F7] outline-none"
+        />
+      </FormField>
+
+      <FormField label="Launch URL (app's own login-start page)">
+        <input
+          type="text"
+          required
+          name="launchUrl"
+          value={launchUrl}
+          onChange={(e) => setLaunchUrl(e.target.value)}
           className="w-full bg-transparent text-sm text-[#F5F5F7] outline-none"
         />
       </FormField>
@@ -299,7 +428,7 @@ function EditClientForm({
           disabled={loading}
           className="flex-1 rounded-full bg-gradient-to-r from-[#6C63FF] via-[#B368F7] to-[#FF6B81] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          {loading ? "Saving..." : "Save"}
+          {loading ? "Saving…" : "Save"}
         </button>
 
         <button
@@ -325,7 +454,7 @@ function FormField({
     <label className="block space-y-1">
       <span className="text-xs text-[#A1A1AA]">{label}</span>
 
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 focus-within:border-white/30 transition-colors">
         {children}
       </div>
     </label>
