@@ -51,6 +51,7 @@ export async function findUserById(userId: string): Promise<SsoUser | null> {
   try {
     const record = await base(USERS_TABLE).find(userId);
     const role = String(record.get("role") || "user").toLowerCase();
+
     return {
       id: record.id,
       username: String(record.get("username")),
@@ -66,8 +67,10 @@ export async function findUserById(userId: string): Promise<SsoUser | null> {
 
 export async function listUsers(): Promise<SsoUser[]> {
   const records = await base(USERS_TABLE).select().all();
+
   return records.map((record) => {
     const role = String(record.get("role") || "user").toLowerCase();
+
     return {
       id: record.id,
       username: String(record.get("username")),
@@ -99,6 +102,7 @@ export async function createUser(username: string, passwordHash: string) {
       },
     },
   ]);
+
   return created[0];
 }
 
@@ -110,6 +114,12 @@ export type OidcClient = {
   redirectUris: string[];
   name: string;
   launchUrl: string;
+
+  /**
+   * Raw SVG markup for the application's icon.
+   * Stored as code in Airtable, not as an uploaded SVG file.
+   */
+  appSvgCode: string;
 };
 
 export async function findClientById(
@@ -136,6 +146,7 @@ export async function findClientById(
       .filter(Boolean),
     name: String(record.get("name") || clientId),
     launchUrl: String(record.get("launchUrl") || ""),
+    appSvgCode: String(record.get("appSvgCode") || ""),
   };
 }
 
@@ -145,6 +156,7 @@ export async function listClients(): Promise<OidcClient[]> {
   return records.map((record) => {
     const redirectUrisRaw = String(record.get("redirectUris") || "");
     const clientId = String(record.get("clientId"));
+
     return {
       id: record.id,
       clientId,
@@ -154,6 +166,7 @@ export async function listClients(): Promise<OidcClient[]> {
         .filter(Boolean),
       name: String(record.get("name") || clientId),
       launchUrl: String(record.get("launchUrl") || ""),
+      appSvgCode: String(record.get("appSvgCode") || ""),
     };
   });
 }
@@ -163,6 +176,7 @@ export async function createClient(params: {
   redirectUris: string[];
   name: string;
   launchUrl: string;
+  appSvgCode: string;
 }) {
   const created = await base(CLIENTS_TABLE).create([
     {
@@ -171,15 +185,22 @@ export async function createClient(params: {
         redirectUris: params.redirectUris.join(","),
         name: params.name,
         launchUrl: params.launchUrl,
+        appSvgCode: params.appSvgCode,
       },
     },
   ]);
+
   return created[0].id;
 }
 
 export async function updateClient(
   recordId: string,
-  params: { redirectUris: string[]; name: string; launchUrl: string }
+  params: {
+    redirectUris: string[];
+    name: string;
+    launchUrl: string;
+    appSvgCode: string;
+  }
 ) {
   // clientId is intentionally not editable here — apps hardcode it, so
   // changing it would silently break whatever's already configured to use it.
@@ -187,6 +208,7 @@ export async function updateClient(
     redirectUris: params.redirectUris.join(","),
     name: params.name,
     launchUrl: params.launchUrl,
+    appSvgCode: params.appSvgCode,
   });
 }
 
@@ -244,11 +266,14 @@ export async function consumeAuthCode(
 
   const used = String(record.get("used")) === "true";
   const expiresAt = String(record.get("expiresAt"));
+
   if (used || new Date(expiresAt).getTime() < Date.now()) {
     return null;
   }
 
-  await base(AUTH_CODES_TABLE).update(record.id, { used: "true" });
+  await base(AUTH_CODES_TABLE).update(record.id, {
+    used: "true",
+  });
 
   return {
     username: String(record.get("username")),
@@ -284,7 +309,7 @@ export async function recordLogin(
       fields: {
         username,
         loginAt: new Date().toISOString(),
-        userAgent: userAgent.slice(0, 500), // Airtable text fields have limits
+        userAgent: userAgent.slice(0, 500),
         device: device.slice(0, 100),
       },
     },
@@ -331,6 +356,7 @@ export async function hasAssignment(
       maxRecords: 1,
     })
     .firstPage();
+
   return records.length > 0;
 }
 
@@ -338,8 +364,11 @@ export async function listAssignmentsForUser(
   userId: string
 ): Promise<Assignment[]> {
   const records = await base(ASSIGNMENTS_TABLE)
-    .select({ filterByFormula: `{userId} = "${userId}"` })
+    .select({
+      filterByFormula: `{userId} = "${userId}"`,
+    })
     .all();
+
   return records.map((record) => ({
     id: record.id,
     userId: String(record.get("userId")),
@@ -353,8 +382,11 @@ export async function listAssignmentsForClient(
   clientId: string
 ): Promise<Assignment[]> {
   const records = await base(ASSIGNMENTS_TABLE)
-    .select({ filterByFormula: `{clientId} = "${clientId}"` })
+    .select({
+      filterByFormula: `{clientId} = "${clientId}"`,
+    })
     .all();
+
   return records.map((record) => ({
     id: record.id,
     userId: String(record.get("userId")),
@@ -375,6 +407,7 @@ export async function createAssignment(
   createdBy: string
 ) {
   const exists = await hasAssignment(userId, clientId);
+
   if (exists) return;
 
   await base(ASSIGNMENTS_TABLE).create([

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateClient, recordAuditEvent } from "@/lib/airtable";
 import { requireAdmin } from "@/lib/require-admin";
-import { isValidLaunchUrl, parseRedirectUris } from "@/lib/client-validation";
+import {
+  isValidLaunchUrl,
+  parseRedirectUris,
+} from "@/lib/client-validation";
 
 /**
  * clientId is intentionally not accepted here — see updateClient's comment
@@ -21,11 +24,17 @@ export async function PATCH(
   }
 
   const body = await req.json();
+
   const name = String(body.name || "").trim();
+
   const redirectUrisRaw = String(body.redirectUris || "");
+
   const launchUrl = String(body.launchUrl || "").trim();
 
+  const appSvgCode = String(body.appSvgCode || "").trim();
+
   const redirectUris = parseRedirectUris(redirectUrisRaw);
+
   if (!redirectUris) {
     return NextResponse.json(
       {
@@ -46,10 +55,26 @@ export async function PATCH(
     );
   }
 
+  // Optional field. If supplied, it must at least be SVG markup.
+  if (
+    appSvgCode &&
+    (!/^<svg[\s>]/i.test(appSvgCode) ||
+      !/<\/svg>\s*$/i.test(appSvgCode))
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "appSvgCode must contain valid SVG markup starting with <svg and ending with </svg>",
+      },
+      { status: 400 }
+    );
+  }
+
   await updateClient(params.id, {
     redirectUris,
     name: name || params.id,
     launchUrl,
+    appSvgCode,
   });
 
   recordAuditEvent({
